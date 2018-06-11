@@ -1,0 +1,103 @@
+---
+- hosts: all
+  become: yes
+  become_method: sudo
+  gather_facts: False
+
+  roles:
+    # - role-realmd
+    #- server-vdp-web
+    #- common-post
+
+  tasks:
+    - name: Disable SELinux
+      selinux:
+        state: disabled
+      register: out_selinux
+
+    - name: Update security packages
+      yum:
+        name: '*'
+        update_cache: yes
+        security: yes
+        state: latest
+
+    - name: Reboot if necessary
+      block:
+
+        - name: Initialize a server reboot
+          command: /usr/bin/systemd-run --on-active=15 /usr/bin/systemctl reboot
+          async: 1
+          poll: 0
+          ignore_errors: true
+
+        - pause: seconds=65 #this times out and resets the above control connection otherwise it will try to be reused: https://github.com/ansible/ansible/issues/27520
+
+        - name: Wait for server to come back
+          wait_for_connection:
+            delay: 0
+            timeout: 120
+
+      when: out_selinux.reboot_required == true
+
+    - name: Set timezone
+      timezone:
+        name: America/Chicago
+
+    - name: Add utils
+      yum:
+        name:
+          - tar
+          - xz
+          - unzip
+          - curl
+          - ipset
+          - wget
+          - ipvsadm #manage minuteman lb mappings
+
+    - name: Add repository
+      yum_repository:
+        name: docker
+        description: docker
+        baseurl: https://download.docker.com/linux/centos/7/x86_64/stable/
+        gpgkey: https://download.docker.com/linux/centos/gpg
+
+    - name: Install docker
+      yum:
+        name: docker-ce-17.06.0.ce
+        state: present
+
+    - name: Make directory for docker config
+      file:
+        path: /etc/docker
+        state: directory
+        mode: 0700
+
+    - name: Copy overlay config
+      copy:
+        src: ./daemon.json
+        dest: /etc/docker/daemon.json
+        owner: root
+        group: root
+        mode: 0644
+
+    - name: Enable and start docker
+      systemd:
+        name: docker.service
+        state: started
+        enabled: True
+
+    - name: Make directory for DCOS repo config
+      file:
+        path: /etc/mesosphere
+        state: directory
+        mode: 0751
+
+    - name: Copy repo config
+      copy:
+        src: ./docker_credentials
+        dest: /etc/mesosphere/docker_credentials
+        owner: root
+        group: root
+        mode: 0644
+      

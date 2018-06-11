@@ -1,0 +1,15 @@
+#cloud-config
+
+# Documentation at http://cloudinit.readthedocs.io/en/latest/index.html
+
+# Add user with ssh key. Users are added after groups are added.
+groups:
+  - nogroup
+  
+users:
+  - default
+  - name: <SSH User>
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    groups: users, admin
+    ssh_authorized_keys:
+      - <RSA Key>

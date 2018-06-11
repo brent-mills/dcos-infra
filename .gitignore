@@ -7,3 +7,12 @@
 
 # .tfvars files
 *.tfvars
+
+# .retry files
+*.retry
+
+# Docker creds
+docker_credentials
+
+# Cloud-config data
+user-data.yml
