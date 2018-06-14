@@ -8,22 +8,13 @@ variable "vpc_id" {
   default = "vpc-6b86db0c"
 }
 
-variable "private_subnet_azs" {
+variable "subnets" {
   description = "List of subnet configs for availability zones"
-  default = [
-    {"zone" = "c", "cidr" = "172.29.11.0/26"},
-    {"zone" = "d", "cidr" = "172.29.11.64/26"},
-    {"zone" = "e", "cidr" = "172.29.11.128/26"}
-  ]
-}
-
-variable "public_subnet_azs" {
-  description = "List of subnet configs for availability zones"
-  default = [
-    {"zone" = "c", "cidr" = "172.29.10.0/26"},
-    {"zone" = "d", "cidr" = "172.29.10.64/26"},
-    {"zone" = "e", "cidr" = "172.29.10.128/26"}
-  ]
+  default = {
+    zones     = "c,d,e",
+    prv_cidrs = "172.29.11.0/26,172.29.11.64/26,172.29.11.128/26",
+    pub_cidrs = "172.29.10.0/26,172.29.10.64/26,172.29.10.128/26"
+  }
 }
 
 variable "ssh_user" {

@@ -6,39 +6,81 @@ data "aws_ami" "centos7" {
   most_recent = true
   filter {
     name   = "name"
-    values = ["CentOS Linux 7*"]
-  }
-  filter {
-    name   = "virtualization-type"
-    values = ["hvm"]
+    values = ["CentOS Linux 7 x86_64 HVM EBS ENA 1805_01-b7ee8a69-ee97-4a49-9e68-afaee216db2e*"]
   }
   owners = ["679593333241"] # Canonical
 }
 
-
+resource "null_resource" "subnets" {
+  count = "${length(split(",",var.subnets["zones"]))}"
+  triggers {
+    zone    = "${element(split(",", var.subnets["zones"]), count.index)}"
+    prv_cidr  = "${element(split(",", var.subnets["prv_cidrs"]), count.index)}"
+    pub_cidr  = "${element(split(",", var.subnets["pub_cidrs"]), count.index)}"
+  }
+}
 
 resource "aws_subnet" "dcos-prv" {
-  count             = "${length(var.private_subnet_azs)}"
+ count             = "${length(null_resource.subnets.*.triggers.zone)}"
   vpc_id            = "${var.vpc_id}"
-  cidr_block        = "${lookup(var.private_subnet_azs[count.index], "cidr")}"
-  availability_zone = "${var.aws_region}${lookup(var.private_subnet_azs[count.index], "zone")}"
+  cidr_block        = "${element(null_resource.subnets.*.triggers.prv_cidr, count.index)}"
+  availability_zone = "${var.aws_region}${element(null_resource.subnets.*.triggers.zone, count.index)}"
   tags {
-    Name = "DCOS Prv ${upper(lookup(var.private_subnet_azs[count.index], "zone"))}"
+    Name        = "DCOS Prv ${upper(element(null_resource.subnets.*.triggers.zone, count.index))}",
+    Cost_Alloc  = "DCOS"
   }
 }
 
 resource "aws_subnet" "dcos-pub" {
-  count             = "${length(var.public_subnet_azs)}"
+  count             = "${length(null_resource.subnets.*.triggers.zone)}"
   vpc_id            = "${var.vpc_id}"
-  cidr_block        = "${lookup(var.public_subnet_azs[count.index], "cidr")}"
-  availability_zone = "${var.aws_region}${lookup(var.public_subnet_azs[count.index], "zone")}"
+  cidr_block        = "${element(null_resource.subnets.*.triggers.pub_cidr, count.index)}"
+  availability_zone = "${var.aws_region}${element(null_resource.subnets.*.triggers.zone, count.index)}"
   tags {
-    Name = "DCOS Pub ${upper(lookup(var.public_subnet_azs[count.index], "zone"))}"
+    Name        = "DCOS Pub ${upper(element(null_resource.subnets.*.triggers.zone, count.index))}",
+    Cost_Alloc  = "DCOS"
   }
 }
 
+#resource "aws_elb" "dcos-master" {
+#  name               = "DCOS Master"
+#  availability_zones = ["${join(",", formatlist("%s%s", var.aws_region, null_resource.subnets.*.triggers.zone))}"]
+#}
+
+resource "aws_instance" "dcos-master" {
+    count                         = 3
+    ami                           = "${data.aws_ami.centos7.id}"
+    instance_type                 = "r4.xlarge"
+    vpc_security_group_ids        = ["sg-58523722"]
+    subnet_id                     = "${element(aws_subnet.dcos-prv.*.id, count.index)}"
+    associate_public_ip_address   = "false"
+    key_name                      = "DevOps"
+    iam_instance_profile          = "DCOS"
+    user_data                     = "${file("./user-data.yml")}"
+    tags {
+        Name        = "DCOS Master ${count.index}",
+        Cost_Alloc  = "DCOS"
+    }
+    root_block_device {
+        volume_type = "gp2"
+        volume_size = "50"
+    }
+    provisioner "remote-exec" {
+        inline = ["echo connected"]
+
+        connection {
+            type        = "ssh"
+            user        = "${var.ssh_user}"
+            private_key = "${file(var.ssh_key_private_file)}"
+        }
+    }
+    provisioner "local-exec" {
+        command = "ansible-playbook -u ${var.ssh_user} -i '${self.private_ip},' --private-key ${var.ssh_key_private_file} provision.yml" 
+    }
+}
+
 resource "aws_instance" "dcos-slave" {
-    count                         = 1
+    count                         = 0
     ami                           = "${data.aws_ami.centos7.id}"
     instance_type                 = "m5.large"
     vpc_security_group_ids        = ["sg-58523722"]
@@ -48,7 +90,8 @@ resource "aws_instance" "dcos-slave" {
     iam_instance_profile          = "DCOS"
     user_data                     = "${file("./user-data.yml")}"
     tags {
-        Name = "testing"
+        Name        = "testing",
+        Cost_Alloc  = "DCOS"
     }
     root_block_device {
         volume_type = "gp2"
