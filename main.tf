@@ -42,10 +42,24 @@ resource "aws_subnet" "dcos-pub" {
   }
 }
 
-#resource "aws_elb" "dcos-master" {
-#  name               = "DCOS Master"
-#  availability_zones = ["${join(",", formatlist("%s%s", var.aws_region, null_resource.subnets.*.triggers.zone))}"]
-#}
+resource "aws_lb_target_group" "dcos-master-80" {
+  count    = 1
+  name     = "DCOS-Master-80"
+  port     = 80
+  protocol = "TCP"
+  vpc_id   = "${var.vpc_id}"
+}
+
+resource "aws_lb" "dcos-master" {
+  name                      = "DCOS-Master"
+  internal                  = true
+  load_balancer_type        = "application"
+  security_groups           = ["sg-03118bb393f33a162"]
+  subnets                   = ["${aws_subnet.dcos-prv.*.id}"]
+  tags {
+    Cost_Alloc = "DCOS"
+  }
+}
 
 resource "aws_instance" "dcos-master" {
     count                         = 3
@@ -75,14 +89,14 @@ resource "aws_instance" "dcos-master" {
         }
     }
     provisioner "local-exec" {
-        command = "ansible-playbook -u ${var.ssh_user} -i '${self.private_ip},' --private-key ${var.ssh_key_private_file} provision.yml" 
+        command = "ansible-playbook -u ${var.ssh_user} -i '${self.private_ip},' --private-key ${var.ssh_key_private_file} --extra-vars 'install_url=${var.install_url}' provision.yml" 
     }
 }
 
-resource "aws_instance" "dcos-slave" {
-    count                         = 0
+resource "aws_instance" "dcos-slave-generic" {
+    count                         = 2
     ami                           = "${data.aws_ami.centos7.id}"
-    instance_type                 = "m5.large"
+    instance_type                 = "m5.4xlarge"
     vpc_security_group_ids        = ["sg-58523722"]
     subnet_id                     = "${element(aws_subnet.dcos-prv.*.id, count.index)}"
     associate_public_ip_address   = "false"
@@ -90,7 +104,7 @@ resource "aws_instance" "dcos-slave" {
     iam_instance_profile          = "DCOS"
     user_data                     = "${file("./user-data.yml")}"
     tags {
-        Name        = "testing",
+        Name        = "DCOS Slave Generic ${count.index}",
         Cost_Alloc  = "DCOS"
     }
     root_block_device {
@@ -107,6 +121,6 @@ resource "aws_instance" "dcos-slave" {
         }
     }
     provisioner "local-exec" {
-        command = "ansible-playbook -u ${var.ssh_user} -i '${self.private_ip},' --private-key ${var.ssh_key_private_file} provision.yml" 
+        command = "ansible-playbook -u ${var.ssh_user} -i '${self.private_ip},' --private-key ${var.ssh_key_private_file} --extra-vars 'install_url=${var.install_url}' provision.yml" 
     }
 }

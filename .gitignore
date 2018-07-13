@@ -16,3 +16,6 @@ docker_credentials
 
 # Cloud-config data
 user-data.yml
+
+# Variables
+variables.tf

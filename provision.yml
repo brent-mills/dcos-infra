@@ -100,4 +100,10 @@
         owner: root
         group: root
         mode: 0644
+
+    - name: Download installer
+      get_url:
+        url: "{{ install_url }}"
+        dest: /root/
+        mode: 0755
       
